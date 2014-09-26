@@ -159,10 +159,84 @@ void Backward(HMM *phmm, SEQUENCE *pseq, double *pprob)
 	printf("prob=%lf\n",*pprob);
 	*/
 }
+void Viterbi(HMM *phmm, SEQUENCE *pseq, double *pprob, SEQUENCE *p_predict_seq)
+{
+	double **delta;
+	int **psi;
+	int i,j,t, maxvalindex;
+	double maxval, val;
+
+	delta = (double**) calloc((unsigned) pseq->T, sizeof(double*));
+	for(t=0; t< pseq->T; t++){
+		delta[t] = (double*) calloc((unsigned) phmm->N, sizeof(double));
+	}
+	psi = (int**) calloc((unsigned) pseq->T, sizeof(int*));
+	for(t=0; t< pseq->T; t++){
+		psi[t] = (int*) calloc((unsigned) phmm->N, sizeof(int));
+	}
+
+	// initial
+	for (i = 0; i < phmm->N; i++) {
+		delta[0][i] = phmm->pi[i] * (phmm->B[i][pseq->O[0]]);
+		psi[0][i] = 0;
+	}
+
+	//
+	for (t = 1; t < pseq->T; t++) {
+		for (j = 0; j < phmm->N; j++) {
+			maxval = 0.0;
+			maxvalindex = 0;	
+			for (i = 0; i < phmm->N; i++) {
+				val = delta[t-1][i]*(phmm->A[i][j]);
+				if (val > maxval) {
+					maxval = val;	
+					maxvalindex = i;	
+				}
+			}
+			//mean the max prob that O[t-1] is state i and O[t] is state j
+			delta[t][j] = maxval*(phmm->B[j][pseq->O[t]]);
+			//mean if O[t] is state j, O[t-1] is state "psi[t][j]"
+			psi[t][j] = maxvalindex; 
+		}
+	}
+
+	*pprob = 0.0;
+	p_predict_seq->T = pseq->T;
+	p_predict_seq->O = (int *)calloc((unsigned)p_predict_seq->T, sizeof(int));
+	p_predict_seq->O[pseq->T-1] = 0;
+	for (i = 0; i < phmm->N; i++) {
+        if (delta[pseq->T-1][i] > *pprob) {
+			*pprob = delta[pseq->T-1][i];	
+			p_predict_seq->O[pseq->T-1] = i;
+		}
+	}
+	for (t = pseq->T - 2; t >= 0; t--){
+		p_predict_seq->O[t] = psi[t+1][p_predict_seq->O[t+1]];
+	}
+
+/*
+	printf("delta:\n");
+	for (t=0;t< pseq->T; t++){
+		for (i = 0; i < phmm->N; i++){
+			printf("%lf ", delta[t][i]);
+		}
+		printf("\n");
+	}
+	
+	printf("psi:\n");
+	for (t=0;t< pseq->T; t++){
+		for (i = 0; i < phmm->N; i++){
+			printf("%d ", psi[t][i]);
+		}
+		printf("\n");
+	}
+*/	
+	
+}
 int main()
 {
 	HMM hmm;
-	SEQUENCE seq;
+	SEQUENCE seq, predict_seq;
 	char* hmmfilename="a.hmm";
 	char* seqfilename="a.seq";
 	FILE *fp = fopen(hmmfilename,"r");
@@ -173,11 +247,17 @@ int main()
 	if (fp == NULL) {printf("fail to open %s\n", seqfilename);exit(1);}
 	readsequence(fp,&seq);
 	fclose(fp);
-	double prob_f,prob_b;
+	double prob_f,prob_b,prob_v;
 	Forward(&hmm, &seq, &prob_f);
 	printf("test [%lf]\n",prob_f);
 	Backward(&hmm, &seq, &prob_b);
 	printf("test [%lf]\n",prob_b);
-
+	Viterbi(&hmm, &seq, &prob_v, &predict_seq);
+	printf("Viterbi=%lf\n",prob_v);
+	int t;
+	for (t=0;t< predict_seq.T; t++){
+		printf("%d->",predict_seq.O[t]);
+	}
+	printf("END\n");
 	exit(0);	
 }
